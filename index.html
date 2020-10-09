@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html>
+	<title>ECCE SIGNUM: Procedural Terrain Explorer</title>
+	<head>
+		<style type="text/css">
+			body {
+				margin: 0; padding: 0;
+			}
+			header {
+				margin: 0; padding: 0;
+				height: 30px;
+				width: 100%;
+				background: rgb(0,0,0);
+			}
+			header > div {
+				float: left;
+				width: 33%;
+				margin: 0; 
+				padding: 0;
+			}
+			header > div a {
+				color: rgb(255,255,255);
+				font: 12px/30px courier,monospace;
+				padding: 0 10px;
+			}
+			header > div h1 {
+				margin: 0;
+				color: rgb(255,255,255);
+				font: 20px/30px courier, monospace;
+				text-align: center;
+			}
+			header > div.homeLink {
+				text-align: right;
+			}
+			#contentBase {
+				width: 720px;
+				margin: 10px auto;
+			}
+			#canvasBase {
+				float: left;
+				width: 400px;
+			}
+			#gradientCanvas {
+				width: 25px;
+				height: 350px;
+				outline: 1px solid rgb(0,0,0);
+				float: left;
+			}
+			#landscapeCanvas {
+				width: 350px;
+				height: 350px;
+				outline: 1px solid rgb(0,0,0);
+				margin-right: 10px;
+				float: left;
+			}
+			.textureDetails {
+				clear: both;
+				padding-top: 10px;
+			}
+			label {
+				margin-right: .5em;
+			}
+			input {
+				width: 25px;
+			}
+			#canvasBase input, #canvasBase select {
+				width: 100px
+			}
+			button {
+				padding: 1px 2px;
+			}
+			label, input, button, select, p, h4 {
+				font: 11px courier, monospace;
+			}
+			h4 {
+				font-size: 16px;
+				margin: 10px 0;
+			}
+			#inputBase {
+				float: left;
+				width: 320px;
+			}
+			#inputBase p {
+				margin: 0 0 4px 0;
+			}
+			.textureDetails label {
+				display: inline-block;
+				margin-bottom: 3px;
+			}
+			#outputText {
+				width: 250px;
+				height: 100px;
+			}
+		</style>
+		<script type="text/javascript">
+
+			//	gradient canvas
+			let gradientSteps = 256;
+			let gradientOutput = [];
+			let gCanvasW = 25;
+			let gCanvasH = 350;
+			let gCanvas;
+			let gContext;
+
+			// terrain canvas
+			let lCanvasWidth = 350;
+			let lCanvasHeight = 350;
+			let lCanvas;
+			let lContext;
+			let landscapeData = [];
+			let landscapeWidth = 300;
+			let landscapeHeight = 300;
+			let centerX = 175;
+			let centerY = 175;
+			let renderStyle = 'flat';
+
+			// animation
+			let timer = null;
+			let isPaused = true;
+
+			// noise variables
+			let simplexNoise;
+			let seed = Math.round(Math.random()* 10000000);	//	random offset from 0 for space in the noise
+			let scale = .007;
+			let octaves = 8;
+			let complexity = .5;
+			let viewAngle = .33; 
+			let pixelSize = 3;
+			let rotationSpeed = 3;
+			let selectedGradient = [];
+			let selectedGradientIndex = 0;
+			let degrees = 0;
+
+			let sorted = [];
+			let isNew = true;
+
+			//	sample gradients
+			let gradientStops = [
+				[	//	grayscale
+					{ r: 0,	g: 0,	b: 0,	pct: 0 },
+					{ r: 255,	g: 255,	b: 255,	pct: 100 }
+				],
+				[	//	default landscape
+					{ r: 0,	g: 0,	b: 0,	pct: 0 },
+					{ r: 0,	g: 0,	b: 102,	pct: 25 },
+					{ r: 102,	g: 153,	b: 255,	pct: 33 },
+					{ r: 204,	g: 204,	b: 255,	pct: 40 },
+					{ r: 204,	g: 153,	b: 51,	pct: 43 },
+					{ r: 153,	g: 255,	b: 153,	pct: 45 },
+					{ r: 102,	g: 204,	b: 102,	pct: 65 },
+					{ r: 51,	g: 102,	b: 51,	pct: 75 },
+					{ r: 153,	g: 153,	b: 153,	pct: 85 },
+					{ r: 255,	g: 255,	b: 255,	pct: 100 }
+				],
+				[	//	plasma
+					{ r: 255,	g: 0,	b: 0,	pct: 0 },
+					{ r: 0,	g: 255,	b: 0,	pct: 33 },
+					{ r: 0,	g: 0,	b: 255,	pct: 66 },
+					{ r: 255,	g: 0,	b: 255,	pct: 100 }
+				],
+				[	//	briliant
+					{ r: 0,	g: 0,	b: 0,	pct: 0 },
+					{ r: 255,	g: 0,	b: 0,	pct: 9 },
+					{ r: 0,	g: 0,	b: 0,	pct: 18 },
+					{ r: 255,	g: 255,	b: 0,	pct: 27 },
+					{ r: 0,	g: 0,	b: 0,	pct: 36 },
+					{ r: 255,	g: 0,	b: 255,	pct: 45 },
+					{ r: 0,	g: 0,	b: 0,	pct: 54 },
+					{ r: 0,	g: 255,	b: 255,	pct: 63 },
+					{ r: 0,	g: 0,	b: 0,	pct: 72 },
+					{ r: 255,	g: 128,	b: 0,	pct: 81 },
+					{ r: 0,	g: 0,	b: 0,	pct: 90 },
+					{ r: 128,	g: 255,	b: 0,	pct: 100 }
+				],
+				[	//	stripes
+					{ r: 0,	g: 0,	b: 0,	pct: 0 },
+					{ r: 255,	g: 255,	b: 255,	pct: 5 },
+					{ r: 0,	g: 0,	b: 0,	pct: 10 },
+					{ r: 255,	g: 255,	b: 255,	pct: 15 },
+					{ r: 0,	g: 0,	b: 0,	pct: 20 },
+					{ r: 255,	g: 255,	b: 255,	pct: 25 },
+					{ r: 0,	g: 0,	b: 0,	pct: 30 },
+					{ r: 255,	g: 255,	b: 255,	pct: 35 },
+					{ r: 0,	g: 0,	b: 0,	pct: 40 },
+					{ r: 255,	g: 255,	b: 255,	pct: 45 },
+					{ r: 0,	g: 0,	b: 0,	pct: 50 },
+					{ r: 255,	g: 255,	b: 255,	pct: 55 },
+					{ r: 0,	g: 0,	b: 0,	pct: 60 },
+					{ r: 255,	g: 255,	b: 255,	pct: 65 },
+					{ r: 0,	g: 0,	b: 0,	pct: 70 },
+					{ r: 255,	g: 255,	b: 255,	pct: 75 },
+					{ r: 0,	g: 0,	b: 0,	pct: 80 },
+					{ r: 255,	g: 255,	b: 255,	pct: 85 },
+					{ r: 0,	g: 0,	b: 0,	pct: 90 },
+					{ r: 255,	g: 255,	b: 255,	pct: 95 },
+					{ r: 0,	g: 0,	b: 0,	pct: 100 }
+				]
+			];
+
+			//	start the whole thing off
+			function init() {
+				gCanvas = document.getElementById('gradientCanvas');
+				gContext = gCanvas.getContext('2d', {alpha: false });
+
+				lCanvas = document.getElementById('landscapeCanvas');
+				lContext = lCanvas.getContext('2d', {alpha: false});
+				
+				selectedGradient = JSON.parse(JSON.stringify(gradientStops[selectedGradientIndex]));
+				
+				simplexNoise = new SimplexNoise();
+				
+				renderGradient();
+				renderUI();
+				renderLandscape('new');
+			}
+
+			// select a sample gradient
+			function setGradient(e) {
+				selectedGradientIndex = parseInt(e.options[e.selectedIndex].value);
+				selectedGradient = JSON.parse(JSON.stringify(gradientStops[selectedGradientIndex]));
+
+				renderGradient();
+				renderUI();
+				renderLandscape();
+			}
+
+			// calculate the 256 color values for the gradient
+			function calculateGradient() {
+				let thisStop = 0;
+				let nextStop = 0;
+				gradientOutput = [];
+				for(let i = 0; i < selectedGradient.length - 1; i++) {
+					thisStop = selectedGradient[i].pct / 100; 
+					nextStop = selectedGradient[i + 1].pct / 100;
+					let stepsForThisStop = Math.round(gradientSteps * (nextStop - thisStop));
+					let stepR = (selectedGradient[i + 1].r - selectedGradient[i].r) / stepsForThisStop;
+					let stepG = (selectedGradient[i + 1].g - selectedGradient[i].g) / stepsForThisStop;
+					let stepB = (selectedGradient[i + 1].b - selectedGradient[i].b) / stepsForThisStop;		
+					for(let j = 0; j < stepsForThisStop; j++) {
+						gradientOutput.push({
+							r: selectedGradient[i].r + Math.round(stepR * j),
+							g: selectedGradient[i].g + Math.round(stepG * j),
+							b: selectedGradient[i].b + Math.round(stepB * j)
+						});
+					}
+				}
+				if(gradientOutput.length < 256) {
+					for(let i = gradientOutput.length; i < 256; i++) {
+						gradientOutput.push({
+							r: selectedGradient[selectedGradient.length - 1].r,
+							g: selectedGradient[selectedGradient.length - 1].g,
+							b: selectedGradient[selectedGradient.length - 1].b
+						});
+					}
+				}
+			}
+
+			//	render the gradient stripe
+			function renderGradient() {
+				calculateGradient();
+				gContext.clearRect(0, 0, gCanvasW, gCanvasH);
+				let stepWidth = (gCanvasW / gradientSteps);
+				let stepHeight = (gCanvasH / gradientSteps);
+				for(let i = 0; i < gradientSteps; i++) {
+					let gY = gCanvasH - ((i + 1) * stepHeight);
+					gContext.fillStyle = 'rgb(' 
+						+ gradientOutput[i].r + ',' 
+						+ gradientOutput[i].g + ',' 
+						+ gradientOutput[i].b + ')';
+					gContext.fillRect(0, gY, gCanvasW, stepHeight);
+				}
+			}
+
+			//	render the gradient value input grid
+			function renderUI() {
+				let output = ``;
+				for(let i = selectedGradient.length - 1; i >= 0; i--) {
+					output += `<p id="${'g'+i}" class="gradientStop">
+						<label><b>${i}</b></label>
+						<label>R:<input id="${'r-' + i}" 
+									type="text" 
+									value="${selectedGradient[i].r}"
+									onchange="updateColor(${i},'r')" /></label>
+						<label>G:<input id="${'g-' + i}" 
+									type="text" 
+									value="${selectedGradient[i].g}" 
+									onchange="updateColor(${i},'g')" /></label>
+						<label>B:<input id="${'b-' + i}" 
+									type="text" 
+									value="${selectedGradient[i].b}" 
+									onchange="updateColor(${i},'b')" /></label>
+						<label>%:<input id="${'pct-' + i}" 
+									type="text" 
+									value="${selectedGradient[i].pct}" 
+									onchange="updateColor(${i},'pct')"/></label>`;
+					if(i < selectedGradient.length - 1) {
+						output += `<button onclick="addOneBelow(${i})">+</button> `;
+					}
+					if(selectedGradient.length > 2) {
+						output += `<button onclick="removeThis(${i})"> &times; </button>`;
+					}
+					output += `</p>`;
+				}
+				document.getElementById('gradientStopsBase').innerHTML = output;
+			}
+
+			//	add a new color stop after the current stop
+			function addOneBelow(index) {
+				let newStop = {
+					r: selectedGradient[index].r,
+					g: selectedGradient[index].g,
+					b: selectedGradient[index].b,
+					pct: selectedGradient[index].pct
+				}
+				selectedGradient.splice(index, 0, newStop);
+				renderGradient();
+				renderUI();
+			}
+
+			//	remove this color stop
+			function removeThis(index) {
+				selectedGradient.splice(index, 1);
+				renderGradient();
+				renderUI();
+			}
+
+			//	change between flat and perspective render of the terrain
+			function toggleRender() {
+				renderStyle = (renderStyle==='flat') ? 'iso' : 'flat';
+				renderLandscape('');
+			}
+
+			//	update color value of an existing stop, based on input from the color grid
+			function updateColor(index, type) {
+				selectedGradient[index][type] = parseInt(document.getElementById(type + '-' + index).value);
+				renderGradient();
+			}
+
+			//	update the seed for the Simplex Noise, based on user input
+			function updateSeed(e) {
+				seed = parseInt(e.value);
+				renderLandscape('');
+			}
+
+			//	set a random seed for the Simplex Noise
+			function setRandomSeed() {
+				seed = Math.round(Math.random() * 10000000);
+				document.getElementById('iSeed').value = seed;
+				renderLandscape('new');
+			}
+
+			//	update the 'zoom' of the Simplex Noise
+			function updateScale(e) {
+				scale = parseFloat(e.value);
+				renderLandscape('new');
+			}
+
+			//	update the fractal depth of the Simplex Noise
+			function updateOctaves(e) {
+				octaves = parseInt(e.value);
+				if (octaves < 1) {
+					octaves = 1;
+					e.value = octaves;
+				}
+				renderLandscape('new');
+			}
+
+			//	update the complexity of the Simplex Noise
+			function updateComplexity(e) {
+				complexity = parseFloat(e.value);
+				renderLandscape('new');
+			}
+
+			//	change the vertical offset of the color layers in the terrain
+			function changeViewAngle(e) {
+				viewAngle = parseFloat(e.value);
+				renderLandscape('');
+			}
+
+			//	set the size of the color fills in the terrain
+			function setPixelSize(e) {
+				pixelSize = parseInt(e.value);
+				renderLandscape('new');
+			}
+
+			//	set the rotation speed and direction of the animation
+			function setRotationSpeed(e) {
+				rotationSpeed = parseInt(e.value);
+				if(rotationSpeed === 0) rotationSpeed = 1;
+				e.value = rotationSpeed;
+				renderLandscape(''); 
+			}
+
+			//	render a new grid of Simplex Noise values
+			function renderLandscape(type) {
+				isNew = (type === 'new');
+				cancelAnimationFrame(timer);
+				if(isNew === true) {
+					// create 2d grid of height data 
+					landscapeData = [];
+					for(let i = 0; i < landscapeWidth; i++) {
+						landscapeData.push([]);
+						for (let j = 0; j < landscapeHeight; j++) {
+							landscapeData[i].push(Math.round(sumOctave(octaves, i + seed, j + seed, complexity, scale, 0, 255)));
+						}
+					}
+
+					// sort individual values into grid of x/y coordinates
+					sorted = [];
+					for(let i = 0; i < 256; i++) {
+						sorted.push([]);
+					}
+					// iterate through random values and push x/y coords to new array
+					for(let i = 0; i < landscapeData.length; i++) {
+						for(let j = 0; j < landscapeData[i].length; j++) {
+							// create a circular space
+							let iOff = -landscapeWidth / 2 + i;
+							let jOff = -landscapeWidth / 2 + j;
+							if(Math.sqrt(iOff * iOff + jOff * jOff) < (landscapeWidth / 2)) {
+								sorted[landscapeData[i][j]].push([i,j]);
+							}
+							
+						}
+					}
+				}
+				rotate();
+			}
+
+			//	toggle between pause and rotate
+			function togglePause() {
+				isPaused = !isPaused;
+				if(isPaused) cancelAnimationFrame(timer);
+				if(!isPaused) timer = requestAnimationFrame(rotate);
+			}
+
+			//	rotate the terrain by one tick
+			function rotate() {	
+				let angle = degrees * Math.PI / 180;
+				let cos = Math.cos(angle);
+				let sin = Math.sin(angle);
+
+				lContext.fillStyle = 'rgb(0,0,0)';
+				lContext.fillRect(0, 0, lCanvas.width, lCanvas.height);
+				let originX = 0, 
+					originY = 0, 
+					rotatedX = 0,
+					rotatedY = 0; 
+				for(let i = 0; i < sorted.length; i++) {
+					for(let j = 0; j < sorted[i].length; j++)  {
+						originX = -(landscapeWidth / 2) + sorted[i][j][0];
+						originY = -(landscapeHeight / 2) + sorted[i][j][1];
+						rotatedX = ((originX * cos) - (originY * sin)) + centerX - (pixelSize / 2);
+						if(renderStyle === 'iso') {
+							rotatedY = (((originX * sin) + (originY * cos) - i) * viewAngle) + centerY + (viewAngle * 100) - (pixelSize / 2);
+						} else {
+							rotatedY = (((originX * sin) + (originY * cos))) + centerY - (pixelSize / 2);
+						}
+						lContext.fillStyle = 'rgb(' 
+							+ gradientOutput[i].r + ',' 
+							+ gradientOutput[i].g + ',' 
+							+ gradientOutput[i].b + ')';
+						lContext.fillRect(rotatedX, rotatedY, pixelSize, pixelSize);
+					}
+				}
+
+				if(!isPaused) {
+					degrees += rotationSpeed;
+					timer = requestAnimationFrame(rotate);
+				}
+			}
+
+			/* SIMPLEX NOISE 
+				This is copied from Sean McCullough's GIT repository here:
+				(https://gist.github.com/slowkow/ac8e2d3d4117ed5ff288bdbd8699b34b) 
+				All following comments created by original developer
+			*/
+			// Ported from Stefan Gustavson's java implementation
+			// http://staffwww.itn.liu.se/~stegu/simplexnoise/simplexnoise.pdf
+			// Read Stefan's excellent paper for details on how this code works.
+			//
+			// Sean McCullough banksean@gmail.com
+
+			/**
+			 * You can pass in a random number generator object if you like.
+			 * It is assumed to have a random() method.
+			 */
+			var SimplexNoise = function(r) {
+				if (r == undefined) r = Math;
+				this.grad3 = [[1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0], 
+							  [1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1], 
+							  [0,1,1],[0,-1,1],[0,1,-1],[0,-1,-1]]; 
+				this.p = [];
+				for (var i=0; i<256; i++) {
+					this.p[i] = Math.floor(r.random()*256);
+				}
+				// To remove the need for index wrapping, double the permutation table length 
+				this.perm = []; 
+				for(var i=0; i<512; i++) {
+					this.perm[i]=this.p[i & 255];
+				} 
+
+				// A lookup table to traverse the simplex around a given point in 4D. 
+				// Details can be found where this table is used, in the 4D noise method. 
+				this.simplex = [ 
+					[0,1,2,3],[0,1,3,2],[0,0,0,0],[0,2,3,1],[0,0,0,0],[0,0,0,0],[0,0,0,0],[1,2,3,0], 
+					[0,2,1,3],[0,0,0,0],[0,3,1,2],[0,3,2,1],[0,0,0,0],[0,0,0,0],[0,0,0,0],[1,3,2,0], 
+					[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0], 
+					[1,2,0,3],[0,0,0,0],[1,3,0,2],[0,0,0,0],[0,0,0,0],[0,0,0,0],[2,3,0,1],[2,3,1,0], 
+					[1,0,2,3],[1,0,3,2],[0,0,0,0],[0,0,0,0],[0,0,0,0],[2,0,3,1],[0,0,0,0],[2,1,3,0], 
+					[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0], 
+					[2,0,1,3],[0,0,0,0],[0,0,0,0],[0,0,0,0],[3,0,1,2],[3,0,2,1],[0,0,0,0],[3,1,2,0], 
+					[2,1,0,3],[0,0,0,0],[0,0,0,0],[0,0,0,0],[3,1,0,2],[0,0,0,0],[3,2,0,1],[3,2,1,0]]; 
+			};
+
+			SimplexNoise.prototype.dot = function(g, x, y) { 
+				return g[0]*x + g[1]*y;
+			};
+
+			SimplexNoise.prototype.noise = function(xin, yin) { 
+				var n0, n1, n2; // Noise contributions from the three corners 
+				// Skew the input space to determine which simplex cell we're in 
+				var F2 = 0.5*(Math.sqrt(3.0)-1.0); 
+				var s = (xin+yin)*F2; // Hairy factor for 2D 
+				var i = Math.floor(xin+s); 
+				var j = Math.floor(yin+s); 
+				var G2 = (3.0-Math.sqrt(3.0))/6.0; 
+				var t = (i+j)*G2; 
+				var X0 = i-t; // Unskew the cell origin back to (x,y) space 
+				var Y0 = j-t; 
+				var x0 = xin-X0; // The x,y distances from the cell origin 
+				var y0 = yin-Y0; 
+				// For the 2D case, the simplex shape is an equilateral triangle. 
+				// Determine which simplex we are in. 
+				var i1, j1; // Offsets for second (middle) corner of simplex in (i,j) coords 
+				if(x0>y0) {i1=1; j1=0;} // lower triangle, XY order: (0,0)->(1,0)->(1,1) 
+				else {i1=0; j1=1;}      // upper triangle, YX order: (0,0)->(0,1)->(1,1) 
+				// A step of (1,0) in (i,j) means a step of (1-c,-c) in (x,y), and 
+				// a step of (0,1) in (i,j) means a step of (-c,1-c) in (x,y), where 
+				// c = (3-sqrt(3))/6 
+				var x1 = x0 - i1 + G2; // Offsets for middle corner in (x,y) unskewed coords 
+				var y1 = y0 - j1 + G2; 
+				var x2 = x0 - 1.0 + 2.0 * G2; // Offsets for last corner in (x,y) unskewed coords 
+				var y2 = y0 - 1.0 + 2.0 * G2; 
+				// Work out the hashed gradient indices of the three simplex corners 
+				var ii = i & 255; 
+				var jj = j & 255; 
+				var gi0 = this.perm[ii+this.perm[jj]] % 12; 
+				var gi1 = this.perm[ii+i1+this.perm[jj+j1]] % 12; 
+				var gi2 = this.perm[ii+1+this.perm[jj+1]] % 12; 
+				// Calculate the contribution from the three corners 
+				var t0 = 0.5 - x0*x0-y0*y0; 
+				if(t0<0) n0 = 0.0; 
+				else { 
+					t0 *= t0; 
+					n0 = t0 * t0 * this.dot(this.grad3[gi0], x0, y0);  // (x,y) of grad3 used for 2D gradient 
+				} 
+				var t1 = 0.5 - x1*x1-y1*y1; 
+				if(t1<0) n1 = 0.0; 
+				else { 
+					t1 *= t1; 
+					n1 = t1 * t1 * this.dot(this.grad3[gi1], x1, y1); 
+				}
+				var t2 = 0.5 - x2*x2-y2*y2; 
+				if(t2<0) n2 = 0.0; 
+				else { 
+					t2 *= t2; 
+					n2 = t2 * t2 * this.dot(this.grad3[gi2], x2, y2); 
+				} 
+				// Add contributions from each corner to get the final noise value. 
+				// The result is scaled to return values in the interval [-1,1]. 
+				return 70.0 * (n0 + n1 + n2); 
+			};
+
+			// 3D simplex noise 
+			SimplexNoise.prototype.noise3d = function(xin, yin, zin) { 
+				var n0, n1, n2, n3; // Noise contributions from the four corners 
+				// Skew the input space to determine which simplex cell we're in 
+				var F3 = 1.0/3.0; 
+				var s = (xin+yin+zin)*F3; // Very nice and simple skew factor for 3D 
+				var i = Math.floor(xin+s); 
+				var j = Math.floor(yin+s); 
+				var k = Math.floor(zin+s); 
+				var G3 = 1.0/6.0; // Very nice and simple unskew factor, too 
+				var t = (i+j+k)*G3; 
+				var X0 = i-t; // Unskew the cell origin back to (x,y,z) space 
+				var Y0 = j-t; 
+				var Z0 = k-t; 
+				var x0 = xin-X0; // The x,y,z distances from the cell origin 
+				var y0 = yin-Y0; 
+				var z0 = zin-Z0; 
+				// For the 3D case, the simplex shape is a slightly irregular tetrahedron. 
+				// Determine which simplex we are in. 
+				var i1, j1, k1; // Offsets for second corner of simplex in (i,j,k) coords 
+				var i2, j2, k2; // Offsets for third corner of simplex in (i,j,k) coords 
+				if(x0>=y0) { 
+					if(y0>=z0) 
+					{ i1=1; j1=0; k1=0; i2=1; j2=1; k2=0; } // X Y Z order 
+					else if(x0>=z0) { i1=1; j1=0; k1=0; i2=1; j2=0; k2=1; } // X Z Y order 
+					else { i1=0; j1=0; k1=1; i2=1; j2=0; k2=1; } // Z X Y order 
+				} 
+				else { // x0<y0 
+					if(y0<z0) { i1=0; j1=0; k1=1; i2=0; j2=1; k2=1; } // Z Y X order 
+					else if(x0<z0) { i1=0; j1=1; k1=0; i2=0; j2=1; k2=1; } // Y Z X order 
+					else { i1=0; j1=1; k1=0; i2=1; j2=1; k2=0; } // Y X Z order 
+				} 
+				// A step of (1,0,0) in (i,j,k) means a step of (1-c,-c,-c) in (x,y,z), 
+				// a step of (0,1,0) in (i,j,k) means a step of (-c,1-c,-c) in (x,y,z), and 
+				// a step of (0,0,1) in (i,j,k) means a step of (-c,-c,1-c) in (x,y,z), where 
+				// c = 1/6.
+				var x1 = x0 - i1 + G3; // Offsets for second corner in (x,y,z) coords 
+				var y1 = y0 - j1 + G3; 
+				var z1 = z0 - k1 + G3; 
+				var x2 = x0 - i2 + 2.0*G3; // Offsets for third corner in (x,y,z) coords 
+				var y2 = y0 - j2 + 2.0*G3; 
+				var z2 = z0 - k2 + 2.0*G3; 
+				var x3 = x0 - 1.0 + 3.0*G3; // Offsets for last corner in (x,y,z) coords 
+				var y3 = y0 - 1.0 + 3.0*G3; 
+				var z3 = z0 - 1.0 + 3.0*G3; 
+				// Work out the hashed gradient indices of the four simplex corners 
+				var ii = i & 255; 
+				var jj = j & 255; 
+				var kk = k & 255; 
+				var gi0 = this.perm[ii+this.perm[jj+this.perm[kk]]] % 12; 
+				var gi1 = this.perm[ii+i1+this.perm[jj+j1+this.perm[kk+k1]]] % 12; 
+				var gi2 = this.perm[ii+i2+this.perm[jj+j2+this.perm[kk+k2]]] % 12; 
+				var gi3 = this.perm[ii+1+this.perm[jj+1+this.perm[kk+1]]] % 12; 
+				// Calculate the contribution from the four corners 
+				var t0 = 0.6 - x0*x0 - y0*y0 - z0*z0; 
+				if(t0<0) n0 = 0.0; 
+				else { 
+					t0 *= t0; 
+					n0 = t0 * t0 * this.dot(this.grad3[gi0], x0, y0, z0); 
+				}
+				var t1 = 0.6 - x1*x1 - y1*y1 - z1*z1; 
+				if(t1<0) n1 = 0.0; 
+				else { 
+					t1 *= t1; 
+					n1 = t1 * t1 * this.dot(this.grad3[gi1], x1, y1, z1); 
+				} 
+				var t2 = 0.6 - x2*x2 - y2*y2 - z2*z2; 
+				if(t2<0) n2 = 0.0; 
+				else { 
+					t2 *= t2; 
+					n2 = t2 * t2 * this.dot(this.grad3[gi2], x2, y2, z2); 
+				} 
+				var t3 = 0.6 - x3*x3 - y3*y3 - z3*z3; 
+				if(t3<0) n3 = 0.0; 
+				else { 
+					t3 *= t3; 
+					n3 = t3 * t3 * this.dot(this.grad3[gi3], x3, y3, z3); 
+				} 
+				// Add contributions from each corner to get the final noise value. 
+				// The result is scaled to stay just inside [-1,1] 
+				return 32.0*(n0 + n1 + n2 + n3); 
+			};
+
+			//	sumOctave method originally written by Christian Maher, from here: 
+			//	https://cmaher.github.io/posts/working-with-simplex-noise/
+			//	translated to Javascript 2020.10.01 by John Winkelman
+			function sumOctave(num_iterations, x, y, persistence, scale, low, high) {
+				let maxAmp = 0;
+				let amp = 1;
+				let freq = scale;
+				let noise = 0;
+
+				// add successively smaller, higher-frequency terms
+				for(let i = 0; i < num_iterations; i++) {
+					noise += simplexNoise.noise(x * freq, y * freq) * amp;
+					maxAmp += amp;
+					amp *= persistence;
+					freq *= 2;
+				}
+				// take the average value of the iterations
+				noise /= maxAmp;
+
+				// normalize the result
+				noise = noise * (high - low) / 2 + (high + low) / 2;
+				return noise;
+			}
+
+			/*  /SIMPLEX NOISE */
+
+
+		</script>
+	</head>
+	<body>
+		<header>
+			<div class="backLink">
+				<a href="http://www.eccesignum.org/laboratory/">&#8592; Back to Labs home page</a>
+			</div>
+			<div>
+				<h1>Procedural Terrain Explorer</h1>
+			</div>
+			<div class="homeLink">
+				<a href="http://www.eccesignum.org">ECCE SIGNUM</a>
+			</div>
+		</header>
+		<div id="contentBase">
+			<div id="canvasBase">
+				<canvas id="landscapeCanvas" width="350" height="350"></canvas>
+				<canvas id="gradientCanvas" width="25" height="350"></canvas>
+				<div class="textureDetails">
+					<h4>Texture Details</h4>
+					<p>
+						<label><input id="iSeed" type="number" value="12345" onchange="updateSeed(this);"/> SEED</label>
+							<button onclick="setRandomSeed()">RANDOM</button><br/>
+						<label><input id="iScale" type="number" value=".007" onchange="updateScale(this);"/> SCALE</label> (default .007)<br/>
+						<label><input id="iOctaves" type="number" value="8" onchange="updateOctaves(this);"/> OCTAVES</label> (default 8)<br/>
+						<label><input id="iComplexity" type="number" value=".5" onchange="updateComplexity(this);"/> COMPLEXITY</label>(default .5)<br/>
+						<label><input id="iViewAngle" type="number" value=".33" onchange="changeViewAngle(this);"/> ELEVATION</label>(default .33)<br/>
+						<label><input id="iPixelSize" type="number" value="3" onchange="setPixelSize(this);"/> PIXEL SIZE</label>(default 3)<br/>
+						<label><input id="iRotationSpeed" type="number" value="3" onchange="setRotationSpeed(this);"/> ROTATION SPEED</label>(default 3, +/- for C/CW)<br/>
+						<label>
+							<select onchange="setGradient(this)">
+								<option value="0" selected="selected">Grayscale</option>
+								<option value="1">Default Landscape</option>
+								<option value="2">Plasma</option>
+								<option value="3">Brilliant</option>
+								<option value="4">Stripes</option>
+							</select> SAMPLE GRADIENTS
+						</label>
+					</p>
+					<p class="gradientTools">
+						<button onclick="renderLandscape('new')">RENDER</button>
+						<button onclick="toggleRender()">PERSPECTIVE</button>
+						<button onclick="togglePause()">ROTATE</button>
+					</p>
+					<h4>Instructions</h4>
+					<p><b>SEED</b> - </p>
+					<p><b>SCALE</b> - </p>
+					<p><b>OCTAVES</b> - </p>
+					<p><b>COMPLEXITY</b> - </p>
+					<p><b>ELEVATION</b> - </p>
+					<p><b>PIXEL SIZE</b> - </p>
+					<p><b>ROTATION SPEED</b> - </p>
+					<p><b>SAMPLE GRADIENTS</b> - </p>
+				</div>
+			</div>
+			<div id="inputBase">
+				<h4>Gradient Inputs</h4>
+				<div id="gradientStopsBase"></div>
+			</div>
+
+		</div>
+		<script type="text/javascript">
+			//	let it begin
+			window.onload = init();
+		</script>
+	</body>
+</html>
